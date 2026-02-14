@@ -1,0 +1,65 @@
+{
+  // ============ Solidity 合约开发 ============
+
+  // Solidity 文件使用 4 空格缩进（社区惯例）
+  "[solidity]": {
+    "editor.tabSize": 4,
+    "editor.defaultFormatter": "NomicFoundation.hardhat-solidity",
+    "editor.formatOnSave": true
+  },
+
+  // ============ 前端开发 (JS/TS/JSX/TSX) ============
+
+  // JS/TS 文件使用 2 空格缩进（前端惯例）
+  "[javascript]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[typescript]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[javascriptreact]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[typescriptreact]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
+  },
+  "[json]": {
+    "editor.tabSize": 2,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  // ============ 通用设置 ============
+
+  "editor.detectIndentation": false,
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // 排除干扰文件
+  "files.exclude": {
+    "node_modules": false,
+    "artifacts": true,
+    "cache": true,
+    "typechain-types": true,
+    "out": true
+  },
+
+  // Juan Blanco 插件：指定依赖搜索路径
+  "solidity.packageDefaultDependenciesContractsDirectory": "",
+  "solidity.packageDefaultDependenciesDirectory": "node_modules",
+  "solidity.remappings": [
+    "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+    "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/"
+  ],
+
+  // 禁用旧版 Juan Blanco 插件（如果安装了 Nomic Foundation 的）
+  "solidity.disableCompileOnSave": true
+}

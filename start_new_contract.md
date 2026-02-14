@@ -82,8 +82,9 @@ cd /Users/rickwang/Documents/Work/TestCan/React/UniStake
 # 2. 初始化 npm 项目
 npm init -y
 
-# 3. 安装 Hardhat
-npm install --save-dev hardhat
+# 3. 安装 Hardhat 2.x（注意：不指定版本会安装 Hardhat 3.x，与本项目不兼容）
+#    zsh 中 ^ 是特殊字符，必须加引号
+npm install --save-dev "hardhat@^2"
 
 # 4. 初始化 Hardhat 项目（选择 "Create a JavaScript project"）
 npx hardhat init
@@ -99,15 +100,16 @@ npx hardhat init
 
 ```bash
 # ---- 核心依赖（生产环境） ----
+# 注意：zsh 中 ^ 是特殊字符，带 @^ 的版本号必须用引号包裹
 
 # OpenZeppelin 标准合约库（ERC20、AccessControl 等）
-npm install @openzeppelin/contracts@^5.0.2
+npm install "@openzeppelin/contracts@^5.0.2"
 
 # OpenZeppelin 可升级合约库（Initializable、UUPSUpgradeable 等）
-npm install @openzeppelin/contracts-upgradeable@^5.0.2
+npm install "@openzeppelin/contracts-upgradeable@^5.0.2"
 
 # OpenZeppelin Hardhat 升级插件（部署 UUPS 代理用）
-npm install @openzeppelin/hardhat-upgrades@^3.2.1
+npm install "@openzeppelin/hardhat-upgrades@^3.2.1"
 
 # ---- 开发依赖 ----
 
@@ -300,11 +302,17 @@ UniStake 合约
 
 ```
 核心公式:
-  用户待领奖励 = (用户质押量 × 池子每份累积奖励) / 1e18 - 用户已结算奖励 + 用户待领奖励
+  本次可领取总奖励 = (user.stAmount × pool.accUniTokenPerST) / 1e18
+                     - user.finishedUniToken
+                     + user.pendingUniToken
+
+  说明：
+    - user.finishedUniToken: 已结算奖励（每次质押/解质押/领取时重新计算）
+    - user.pendingUniToken: 历史累积待领奖励（unstake 时暂存的奖励）
 
 其中：
   池子每份累积奖励 (accUniTokenPerST) 每次更新池子时增加：
-    增量 = (区块数 × 每区块奖励 × 池子权重 / 总权重) × 1e18 / 池子总质押量
+    增量 = (区块数 × 每区块全局总奖励 × 池子权重 / 总权重) × 1e18 / 池子总质押量
 ```
 
 **为什么乘以 1e18？**

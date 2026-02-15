@@ -275,9 +275,8 @@ contract UniStake is
             "UniStake: can not add pool after end block"
         );
 
-        // TODO:
         if (_withUpdate) {
-            // massUpdatePools();
+            massUpdatePools();
         }
 
         lastRewardBlock = block.number > startBlock ? block.number : startBlock;
@@ -332,7 +331,7 @@ contract UniStake is
         );
 
         if (withUpdate) {
-            // massUpdatePools();
+            massUpdatePools();
         }
 
         Pool storage pool = pools[_pid];
@@ -348,6 +347,7 @@ contract UniStake is
         return pools.length;
     }
 
+    // query multiplier over the given from to to block, which will be used to calculate reward from from block to to block
     function getMultiplier(
         uint256 _from,
         uint256 _to
@@ -370,6 +370,7 @@ contract UniStake is
         return multiplier;
     }
 
+    // query pending UniToken reward, which can be used to display pending reward for user in frontend
     function pendingUniToken(
         uint256 _pid,
         address _user
@@ -377,6 +378,7 @@ contract UniStake is
         return pendingUniTokenByBlockNumber(_pid, _user, block.number);
     }
 
+    // query pending UniToken reward by specific block number, which can be used to query pending reward at past block or future block
     function pendingUniTokenByBlockNumber(
         uint256 _pid,
         address _user,
@@ -401,4 +403,70 @@ contract UniStake is
             1e18 -
             userInfo.finishedUniToken;
     }
+
+    function stakingBalance(
+        uint256 _pid,
+        address _user
+    ) public view checkPID(_pid) returns (uint256) {
+        User storage userInfo = user[_pid][_user];
+        return userInfo.stAmount;
+    }
+
+    function withdrawAmount(
+        uint256 _pid,
+        address _user
+    )
+        public
+        view
+        checkPID(_pid)
+        returns (uint256 requestAmount, uint256 pendingWithdrawAmount)
+    {
+        User storage userInfo = user[_pid][_user];
+        uint256 totalRequestAmount = 0;
+        uint256 pendingWithdrawAmount = 0;
+        for (uint256 i = 0; i < userInfo.requests.length; i++) {
+            UnstakeRequest storage request = userInfo.requests[i];
+            totalRequestAmount += request.amount;
+            if (block.number >= request.unlockBlocks) {
+                pendingWithdrawAmount += request.amount;
+            }
+        }
+        return (totalRequestAmount, pendingWithdrawAmount);
+    }
+
+    // ************************************** USER FUNCTION **************************************
+
+    // ************************************** PUBLIC FUNCTION **************************************
+
+    function updatePool(uint256 _pid) public checkPID(_pid) {
+        if (block.number <= pools[_pid].lastRewardBlock) {
+            return;
+        }
+        // calculate pool total reward from last reward block to current block
+        Pool storage pool = pools[_pid];
+        uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+        uint256 uniTokenReward = (multiplier * pool.poolWeight) /
+            totalPoolWeight;
+        if (pool.stTokenAmount == 0) {
+            pool.lastRewardBlock = block.number;
+            emit UpdatePool(_pid, pool.lastRewardBlock, 0);
+            return;
+        }
+        pool.accUniTokenPerST =
+            pool.accUniTokenPerST +
+            (uniTokenReward * 1e18) /
+            pool.stTokenAmount;
+        pool.lastRewardBlock = block.number;
+
+        emit UpdatePool(_pid, pool.lastRewardBlock, uniTokenReward);
+    }
+
+    function massUpdatePools() public {
+        uint256 length = pools.length;
+        for (uint256 pid = 0; pid < length; pid++) {
+            updatePool(pid);
+        }
+    }
+
+    // ********************************* INTERNAL FUNCTION **************************************
 }

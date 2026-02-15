@@ -50,16 +50,5 @@
     "cache": true,
     "typechain-types": true,
     "out": true
-  },
-
-  // Juan Blanco 插件：指定依赖搜索路径
-  "solidity.packageDefaultDependenciesContractsDirectory": "",
-  "solidity.packageDefaultDependenciesDirectory": "node_modules",
-  "solidity.remappings": [
-    "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
-    "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/"
-  ],
-
-  // 禁用旧版 Juan Blanco 插件（如果安装了 Nomic Foundation 的）
-  "solidity.disableCompileOnSave": true
+  }
 }

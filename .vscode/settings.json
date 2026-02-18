@@ -4,8 +4,7 @@
   // Solidity 文件使用 4 空格缩进（社区惯例）
   "[solidity]": {
     "editor.tabSize": 4,
-    "editor.defaultFormatter": "NomicFoundation.hardhat-solidity",
-    "editor.formatOnSave": true
+    "editor.defaultFormatter": "NomicFoundation.hardhat-solidity"
   },
 
   // ============ 前端开发 (JS/TS/JSX/TSX) ============

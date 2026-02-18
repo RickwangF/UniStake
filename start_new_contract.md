@@ -10,9 +10,10 @@
 6. [合约设计 — UniStake (质押合约)](#6-合约设计--unistake-质押合约)
 7. [部署脚本编写](#7-部署脚本编写)
 8. [测试编写 (Foundry)](#8-测试编写-foundry)
-9. [部署到 Sepolia 测试网](#9-部署到-sepolia-测试网)
-10. [合约验证](#10-合约验证)
-11. [常见问题与注意事项](#11-常见问题与注意事项)
+9. [本地部署与交互测试](#9-本地部署与交互测试)
+10. [部署到 Sepolia 测试网](#10-部署到-sepolia-测试网)
+11. [合约验证](#11-合约验证)
+12. [常见问题与注意事项](#12-常见问题与注意事项)
 
 ---
 
@@ -926,7 +927,146 @@ forge test --gas-report
 
 ---
 
-## 9. 部署到 Sepolia 测试网
+## 9. 本地部署与交互测试
+
+在部署到 Sepolia 之前，先在本地验证完整流程。
+
+### 9.1 编译合约
+
+```bash
+npx hardhat compile
+```
+
+确保无报错后再进行部署。
+
+### 9.2 启动本地节点
+
+```bash
+# 终端 1：启动 Hardhat 本地节点（保持运行，不要关闭）
+npx hardhat node
+```
+
+启动后会输出 20 个测试账户，每个初始 10000 ETH。关闭终端 1 后所有部署数据清空。
+
+### 9.3 部署合约
+
+```bash
+# 终端 2（新开一个终端窗口）：
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+输出示例：
+
+```
+UniToken deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
+UniStake (proxy) deployed to: 0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+Transferred 10000000.0 UniToken to stake contract
+```
+
+记下这两个地址，后续交互需要用到。
+
+### 9.4 进入交互式 Console
+
+```bash
+# 终端 2：
+npx hardhat console --network localhost
+```
+
+### 9.5 完整测试流程
+
+在 console 中逐步执行以下命令：
+
+```javascript
+// ===== 1. 初始化 =====
+
+// 获取合约实例（替换为你实际的部署地址）
+const stake = await ethers.getContractAt("UniStake", "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0");
+const token = await ethers.getContractAt("UniToken", "0x5FbDB2315678afecb367f032d93F642f64180aa3");
+const [admin] = await ethers.getSigners();
+
+// ===== 2. 添加 ETH 池子 =====
+
+// 参数: stTokenAddress=0x0(ETH), poolWeight=500, minDeposit=100wei, unstakeLock=20块, withUpdate=true
+await stake.addPool(ethers.ZeroAddress, 500, 100, 20, true);
+
+// 验证池子数量
+await stake.poolLength();
+// 输出: 1n
+
+// ===== 3. 质押 ETH =====
+
+await stake.depositETH({ value: ethers.parseEther("1") });
+
+// 验证质押余额
+ethers.formatEther(await stake.stakingBalance(0, admin.address));
+// 输出: '1.0'
+
+// ===== 4. 推进区块，测试奖励 =====
+
+// 推进 100 个区块（参数为十六进制: 0x64 = 100）
+await network.provider.send("hardhat_mine", ["0x64"]);
+
+// 查看待领奖励
+ethers.formatEther(await stake.pendingUniToken(0, admin.address));
+// 输出: '100.0'（100 区块 × 每区块 1 UniToken）
+
+// 推进更多区块
+await network.provider.send("hardhat_mine", ["0x64"]);
+ethers.formatEther(await stake.pendingUniToken(0, admin.address));
+// 输出: '200.0'
+
+// ===== 5. 领取奖励（claim） =====
+
+// 领取奖励（不影响质押）
+await stake.claim(0);
+
+// 查看 admin 的 UniToken 余额（会比查询时多 1，因为 claim 交易本身占 1 个区块）
+ethers.formatEther(await token.balanceOf(admin.address));
+
+// ===== 6. 解质押（unstake） =====
+
+// 申请解质押 0.5 ETH
+await stake.unstake(0, ethers.parseEther("0.5"));
+
+// 验证质押余额减少
+ethers.formatEther(await stake.stakingBalance(0, admin.address));
+// 输出: '0.5'
+
+// ===== 7. 推进区块，跳过锁定期 =====
+
+// addPool 时设的 unstakeLockedBlocks = 20，推进 20 个区块（0x14 = 20）
+await network.provider.send("hardhat_mine", ["0x14"]);
+
+// ===== 8. 提取质押物（withdraw） =====
+
+await stake.withdraw(0);
+
+// 查看 ETH 余额（应接近 9999.5 ETH，差额为 gas 费）
+ethers.formatEther(await ethers.provider.getBalance(admin.address));
+```
+
+### 9.6 推进区块常用值
+
+`hardhat_mine` 参数为十六进制：
+
+| 区块数 | 十六进制 | 命令 |
+|--------|----------|------|
+| 10 | `0xa` | `await network.provider.send("hardhat_mine", ["0xa"]);` |
+| 20 | `0x14` | `await network.provider.send("hardhat_mine", ["0x14"]);` |
+| 50 | `0x32` | `await network.provider.send("hardhat_mine", ["0x32"]);` |
+| 100 | `0x64` | `await network.provider.send("hardhat_mine", ["0x64"]);` |
+| 1000 | `0x3e8` | `await network.provider.send("hardhat_mine", ["0x3e8"]);` |
+
+### 9.7 注意事项
+
+- 每笔交易（非 view 函数调用）都会推进 1 个区块，所以实际奖励可能比查询时多 1
+- `console` 中赋值语句输出 `undefined` 是正常的，变量已赋值成功
+- `view` 函数（如 `pendingUniToken`、`stakingBalance`）不消耗 gas，可以随意调用
+- 关闭终端 1 的 `hardhat node` 后所有数据清空，需要重新部署
+
+---
+
+## 10. 部署到 Sepolia 测试网
 
 按以下顺序执行：
 
@@ -957,7 +1097,7 @@ npx hardhat run scripts/addPool.js --network sepolia
 
 ---
 
-## 10. 合约验证
+## 11. 合约验证
 
 部署后，在 Etherscan 上验证合约源码：
 
@@ -973,7 +1113,7 @@ npx hardhat verify --network sepolia 你的UniStake实现地址
 
 ---
 
-## 11. 常见问题与注意事项
+## 12. 常见问题与注意事项
 
 ### Solidity 语法要点
 

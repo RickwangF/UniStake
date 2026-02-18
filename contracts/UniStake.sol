@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 contract UniStake is
     Initializable,
@@ -17,8 +13,6 @@ contract UniStake is
     PausableUpgradeable
 {
     using SafeERC20 for IERC20;
-    using Address for address;
-    using Math for uint256;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
@@ -49,8 +43,6 @@ contract UniStake is
     }
 
     struct User {
-        // User address 用户地址
-        address userAddress;
         // Staking token amount that user provided
         uint256 stAmount;
         // Finished distributed UniToken to user 最终 UniToken 得到的数量
@@ -197,32 +189,32 @@ contract UniStake is
 
     // ************************************** ADMIN FUNCTION **************************************
 
-    function setUniToken(IERC20 _uniToken) internal onlyRole(ADMIN_ROLE) {
+    function setUniToken(IERC20 _uniToken) public onlyRole(ADMIN_ROLE) {
         uniToken = _uniToken;
         emit SetUniToken(uniToken);
     }
 
-    function pauseWithdraw() internal onlyRole(ADMIN_ROLE) {
+    function pauseWithdraw() public onlyRole(ADMIN_ROLE) {
         withdrawPaused = true;
         emit PauseWithdraw();
     }
 
-    function unpauseWithdraw() internal onlyRole(ADMIN_ROLE) {
+    function unpauseWithdraw() public onlyRole(ADMIN_ROLE) {
         withdrawPaused = false;
         emit UnpauseWithdraw();
     }
 
-    function pauseClaim() internal onlyRole(ADMIN_ROLE) {
+    function pauseClaim() public onlyRole(ADMIN_ROLE) {
         claimPaused = true;
         emit PauseClaim();
     }
 
-    function unpauseClaim() internal onlyRole(ADMIN_ROLE) {
+    function unpauseClaim() public onlyRole(ADMIN_ROLE) {
         claimPaused = false;
         emit UnpauseClaim();
     }
 
-    function setStartBlock(uint256 _startBlock) internal onlyRole(ADMIN_ROLE) {
+    function setStartBlock(uint256 _startBlock) public onlyRole(ADMIN_ROLE) {
         require(
             _startBlock < endBlock,
             "UniStake: start block must be less than end block"
@@ -231,7 +223,7 @@ contract UniStake is
         emit SetStartBlock(startBlock);
     }
 
-    function setEndBlock(uint256 _endBlock) internal onlyRole(ADMIN_ROLE) {
+    function setEndBlock(uint256 _endBlock) public onlyRole(ADMIN_ROLE) {
         require(
             startBlock < _endBlock,
             "UniStake: end block must be greater than start block"
@@ -242,7 +234,7 @@ contract UniStake is
 
     function setUniTokenPerBlock(
         uint256 _uniTokenPerBlock
-    ) internal onlyRole(ADMIN_ROLE) {
+    ) public onlyRole(ADMIN_ROLE) {
         require(
             _uniTokenPerBlock > 0,
             "UniStake: uniToken per block must be greater than 0"
@@ -258,14 +250,11 @@ contract UniStake is
         uint256 _unstakeLockedBlocks,
         bool _withUpdate
     ) public onlyRole(ADMIN_ROLE) {
-        require(
-            pools.length == 0 && _stTokenAddress == address(0),
-            "UniStake: the first pool must be ETH"
-        );
-        require(
-            pools.length > 0 && _stTokenAddress != address(0),
-            "UniStake: the other pool must not be ETH"
-        );
+        if (pools.length > 0) {
+            require(_stTokenAddress != address(0));
+        } else {
+            require(_stTokenAddress == address(0));
+        }
         require(
             _unstakeLockedBlocks > 0,
             "UniStake: unstake locked blocks must be greater than 0"
@@ -279,7 +268,9 @@ contract UniStake is
             massUpdatePools();
         }
 
-        lastRewardBlock = block.number > startBlock ? block.number : startBlock;
+        uint256 lastRewardBlock = block.number > startBlock
+            ? block.number
+            : startBlock;
         totalPoolWeight += _poolWeight;
 
         pools.push(
@@ -307,7 +298,7 @@ contract UniStake is
         uint256 _pid,
         uint256 _minDepositAmount,
         uint256 _unstakeLockedBlocks
-    ) public onlyRole(ADMIN_ROLE) checkPID {
+    ) public onlyRole(ADMIN_ROLE) checkPID(_pid) {
         Pool storage pool = pools[_pid];
         pool.minDepositAmount = _minDepositAmount;
         pool.unstakeLockedBlocks = _unstakeLockedBlocks;
@@ -319,7 +310,7 @@ contract UniStake is
         uint256 _pid,
         uint256 _poolWeight,
         bool withUpdate
-    ) public onlyRole(ADMIN_ROLE) checkPID {
+    ) public onlyRole(ADMIN_ROLE) checkPID(_pid) {
         require(
             block.number < endBlock,
             "UniStake: can not set pool weight after end block"
@@ -338,10 +329,10 @@ contract UniStake is
         totalPoolWeight = totalPoolWeight - pool.poolWeight + _poolWeight;
         pool.poolWeight = _poolWeight;
 
-        emit SetPoolWeight(_pid, _poolWeight);
+        emit SetPoolWeight(_pid, _poolWeight, totalPoolWeight);
     }
 
-    // 查询函数
+    // *************************************** VIEW FUNCTION **************************************
 
     function poolLength() public view returns (uint256) {
         return pools.length;
@@ -366,7 +357,7 @@ contract UniStake is
             _from <= _to,
             "UniStake: from block must be less than or equal to to block after adjustment"
         );
-        unint256 multiplier = (_to - _from) * tryMul(uniTokenPerBlock);
+        uint256 multiplier = (_to - _from) * uniTokenPerBlock;
         return multiplier;
     }
 
@@ -395,7 +386,7 @@ contract UniStake is
             );
             uint256 uniTokenReward = (multiplier * pool.poolWeight) /
                 totalPoolWeight;
-            accUniTokenPerST += (uniTokenReward * 1e18) / stAmount;
+            accUniTokenPerST += (uniTokenReward * 1e18) / pool.stTokenAmount;
         }
         return
             userInfo.pendingUniToken +
@@ -419,11 +410,11 @@ contract UniStake is
         public
         view
         checkPID(_pid)
-        returns (uint256 requestAmount, uint256 pendingWithdrawAmount)
+        returns (uint256 totalRequestAmount, uint256 pendingWithdrawAmount)
     {
         User storage userInfo = user[_pid][_user];
-        uint256 totalRequestAmount = 0;
-        uint256 pendingWithdrawAmount = 0;
+        totalRequestAmount = 0;
+        pendingWithdrawAmount = 0;
         for (uint256 i = 0; i < userInfo.requests.length; i++) {
             UnstakeRequest storage request = userInfo.requests[i];
             totalRequestAmount += request.amount;
@@ -435,6 +426,133 @@ contract UniStake is
     }
 
     // ************************************** USER FUNCTION **************************************
+
+    function depositETH() public payable whenNotPaused {
+        Pool storage pool = pools[ETH_PID];
+        require(
+            pool.stTokenAddress == address(0),
+            "UniStake: the first pool must be ETH"
+        );
+        uint256 amount = msg.value;
+        require(
+            amount >= pool.minDepositAmount,
+            "UniStake: deposit amount must be greater than or equal to min deposit amount"
+        );
+        _deposit(ETH_PID, amount);
+    }
+
+    function deposit(
+        uint256 _pid,
+        uint256 amount
+    ) public whenNotPaused checkPID(_pid) {
+        Pool storage pool = pools[_pid];
+        require(
+            pool.stTokenAddress != address(0),
+            "UniStake: the other pool must not be ETH"
+        );
+        require(
+            amount >= pool.minDepositAmount,
+            "UniStake: deposit amount must be >= min deposit amount"
+        );
+        IERC20(pool.stTokenAddress).safeTransferFrom(
+            msg.sender,
+            address(this),
+            amount
+        );
+        _deposit(_pid, amount);
+    }
+
+    function unstake(
+        uint256 _pid,
+        uint256 _amount
+    ) public whenNotPaused whenNotWithdrawPaused checkPID(_pid) {
+        Pool storage pool = pools[_pid];
+        User storage userInfo = user[_pid][msg.sender];
+        require(
+            userInfo.stAmount >= _amount,
+            "UniStake: unstake amount exceeds balance"
+        );
+
+        updatePool(_pid);
+        uint256 pendingUniToken_ = (userInfo.stAmount * pool.accUniTokenPerST) /
+            1e18 -
+            userInfo.finishedUniToken;
+        if (pendingUniToken_ > 0) {
+            userInfo.pendingUniToken += pendingUniToken_;
+        }
+        if (_amount > 0) {
+            userInfo.stAmount -= _amount;
+            userInfo.requests.push(
+                UnstakeRequest({
+                    amount: _amount,
+                    unlockBlocks: block.number + pool.unstakeLockedBlocks
+                })
+            );
+            pool.stTokenAmount -= _amount;
+            emit RequestUnstake(msg.sender, _pid, _amount);
+        }
+        userInfo.finishedUniToken =
+            (userInfo.stAmount * pool.accUniTokenPerST) /
+            1e18;
+    }
+
+    function withdraw(
+        uint256 _pid
+    ) public whenNotPaused whenNotWithdrawPaused checkPID(_pid) {
+        Pool storage pool = pools[_pid];
+        User storage userInfo = user[_pid][msg.sender];
+
+        uint256 pendingWithdraw = 0;
+        uint256 popNum = 0;
+        for (uint256 i = 0; i < userInfo.requests.length; i++) {
+            UnstakeRequest storage request = userInfo.requests[i];
+            if (block.number >= request.unlockBlocks) {
+                pendingWithdraw += request.amount;
+                popNum++;
+            } else {
+                break;
+            }
+        }
+
+        for (uint256 i = 0; i < userInfo.requests.length - popNum; i++) {
+            userInfo.requests[i] = userInfo.requests[i + popNum];
+        }
+        for (uint256 i = 0; i < popNum; i++) {
+            userInfo.requests.pop();
+        }
+
+        if (pendingWithdraw > 0) {
+            if (pool.stTokenAddress == address(0)) {
+                _safeETHTransfer(msg.sender, pendingWithdraw);
+            } else {
+                IERC20(pool.stTokenAddress).safeTransfer(
+                    msg.sender,
+                    pendingWithdraw
+                );
+            }
+            emit Withdraw(msg.sender, _pid, pendingWithdraw, block.number);
+        }
+    }
+
+    function claim(
+        uint256 _pid
+    ) public whenNotPaused whenNotClaimPaused checkPID(_pid) {
+        Pool storage pool = pools[_pid];
+        User storage userInfo = user[_pid][msg.sender];
+        updatePool(_pid);
+        uint256 pendingUniToken_ = (userInfo.stAmount * pool.accUniTokenPerST) /
+            1e18 -
+            userInfo.finishedUniToken +
+            userInfo.pendingUniToken;
+        if (pendingUniToken_ > 0) {
+            userInfo.pendingUniToken = 0;
+            _safeUniTokenTransfer(msg.sender, pendingUniToken_);
+        }
+        userInfo.finishedUniToken =
+            (userInfo.stAmount * pool.accUniTokenPerST) /
+            1e18;
+        emit Claim(msg.sender, _pid, pendingUniToken_);
+    }
 
     // ************************************** PUBLIC FUNCTION **************************************
 
@@ -469,4 +587,52 @@ contract UniStake is
     }
 
     // ********************************* INTERNAL FUNCTION **************************************
+
+    function _deposit(uint256 _pid, uint256 amount) internal checkPID(_pid) {
+        Pool storage pool = pools[_pid];
+        User storage userInfo = user[_pid][msg.sender];
+
+        require(amount > 0, "UniStake: deposit amount must be greater than 0");
+
+        updatePool(_pid);
+
+        if (userInfo.stAmount > 0) {
+            // 先算出用户之前的 pending reward，更新到 userInfo.pendingUniToken 中
+            uint256 pendingReward = (userInfo.stAmount *
+                pool.accUniTokenPerST) /
+                1e18 -
+                userInfo.finishedUniToken;
+            userInfo.pendingUniToken += pendingReward;
+        }
+
+        userInfo.stAmount += amount;
+        pool.stTokenAmount += amount;
+        // 更新用户已经获得的奖励，等于用户质押数量乘以每个质押代币对应的奖励，再除以 1e18，重置起点
+        userInfo.finishedUniToken =
+            (userInfo.stAmount * pool.accUniTokenPerST) /
+            1e18;
+        emit Deposit(msg.sender, _pid, amount);
+    }
+
+    function _safeUniTokenTransfer(address _to, uint256 _amount) internal {
+        uint256 uniTokenBal = uniToken.balanceOf(address(this));
+        if (uniTokenBal >= _amount) {
+            uniToken.safeTransfer(_to, _amount);
+        } else {
+            uniToken.safeTransfer(_to, uniTokenBal);
+        }
+    }
+
+    function _safeETHTransfer(address _to, uint256 _amount) internal {
+        (bool success, bytes memory data) = address(_to).call{value: _amount}(
+            ""
+        );
+        require(success, "UniStake: safe transfer ETH failed");
+        if (data.length > 0) {
+            require(
+                abi.decode(data, (bool)),
+                "UniStake: safe transfer ETH failed"
+            );
+        }
+    }
 }
